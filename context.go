@@ -30,7 +30,7 @@ func (c *Context) reset() {
 	c.Errors = c.Errors[:0]
 }
 
-func (c *Context) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
+func (c *Context) Publish(ctx context.Context, topic string, event cloudevents.Event) error {
 	return c.engine.Publish(ctx, topic, event)
 }
 

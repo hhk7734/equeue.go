@@ -35,7 +35,7 @@ func (n *natsDriver) Client() nats.JetStreamContext {
 	return n.js
 }
 
-func (n *natsDriver) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
+func (n *natsDriver) Publish(ctx context.Context, topic string, event cloudevents.Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return err

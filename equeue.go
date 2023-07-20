@@ -91,7 +91,7 @@ func (e *Engine) newContext() *Context {
 	return &Context{engine: e}
 }
 
-func (e *Engine) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
+func (e *Engine) Publish(ctx context.Context, topic string, event cloudevents.Event) error {
 	if err := event.Validate(); err != nil {
 		return err
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 type Driver interface {
-	Publish(c context.Context, topic string, event *cloudevents.Event) error
+	Publish(c context.Context, topic string, event cloudevents.Event) error
 	Consumer(topic string, subscriptionName string, maxAckPending int) (Consumer, error)
 	Close() error
 }
