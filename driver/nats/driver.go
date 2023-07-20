@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math/rand"
 	"sync"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/hhk7734/equeue.go"
@@ -72,8 +74,8 @@ type natsConsumer struct {
 	ctx           context.Context
 	cancelCtx     context.CancelFunc
 
-	mu   sync.Mutex
-	msgs map[*natsMessage]struct{}
+	mu             sync.Mutex
+	activeMessages map[*natsMessage]struct{}
 }
 
 func (n *natsConsumer) Receive() (equeue.Message, error) {
@@ -83,6 +85,14 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 			return nil, equeue.ErrConsumerStopped
 		default:
 		}
+
+		n.mu.Lock()
+		if n.maxAckPending > 0 && len(n.activeMessages) >= n.maxAckPending {
+			n.mu.Unlock()
+			time.Sleep(2*time.Second + time.Duration(rand.Intn(int(time.Second))))
+			continue
+		}
+		n.mu.Unlock()
 
 		nMsgs, err := n.sub.Fetch(1, nats.Context(n.ctx))
 		switch {
@@ -102,14 +112,11 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 			return nil, err
 		}
 
-		msg := &natsMessage{msg: nMsg, event: &event}
+		msg := &natsMessage{msg: nMsg, event: &event, consumer: n}
 
-		n.mu.Lock()
-		if n.msgs == nil {
-			n.msgs = make(map[*natsMessage]struct{})
+		if !n.trackMessages(msg, true) {
+			return nil, equeue.ErrConsumerStopped
 		}
-		n.msgs[msg] = struct{}{}
-		n.mu.Unlock()
 
 		return msg, nil
 	}
@@ -120,11 +127,34 @@ func (n *natsConsumer) Stop() error {
 	return nil
 }
 
+func (n *natsConsumer) trackMessages(msg *natsMessage, add bool) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.activeMessages == nil {
+		n.activeMessages = make(map[*natsMessage]struct{})
+	}
+
+	if add {
+		select {
+		case <-n.ctx.Done():
+			return false
+		default:
+		}
+		n.activeMessages[msg] = struct{}{}
+	} else {
+		delete(n.activeMessages, msg)
+	}
+
+	return true
+}
+
 var _ equeue.Message = new(natsMessage)
 
 type natsMessage struct {
-	msg   *nats.Msg
-	event *cloudevents.Event
+	msg      *nats.Msg
+	event    *cloudevents.Event
+	consumer *natsConsumer
 }
 
 func (n *natsMessage) Event() *cloudevents.Event {
@@ -133,8 +163,10 @@ func (n *natsMessage) Event() *cloudevents.Event {
 
 func (n *natsMessage) Ack() {
 	n.msg.Ack()
+	n.consumer.trackMessages(n, false)
 }
 
 func (n *natsMessage) Nack() {
 	n.msg.Nak()
+	n.consumer.trackMessages(n, false)
 }
