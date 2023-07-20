@@ -92,6 +92,9 @@ func (e *Engine) newContext() *Context {
 }
 
 func (e *Engine) Publish(ctx context.Context, topic string, event *event.Event) error {
+	if err := event.Validate(); err != nil {
+		return err
+	}
 	return e.driver.Publish(ctx, topic, event)
 }
 
