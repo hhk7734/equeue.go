@@ -2,8 +2,10 @@ package equeue
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type HandlerFunc func(*Context)
@@ -76,9 +78,37 @@ func (e *Engine) Close() {
 	e.inShutdown.Store(true)
 }
 
+const shutdownPollIntervalMax = 500 * time.Millisecond
+
 func (e *Engine) Shutdown(ctx context.Context) error {
 	e.inShutdown.Store(true)
-	return nil
+
+	// TODO: Close consumers
+
+	pollIntervalBase := time.Millisecond
+	nextPollInterval := func() time.Duration {
+		interval := pollIntervalBase + time.Duration(rand.Intn(int(pollIntervalBase/10)))
+		pollIntervalBase *= 2
+		if pollIntervalBase > shutdownPollIntervalMax {
+			pollIntervalBase = shutdownPollIntervalMax
+		}
+		return interval
+	}
+
+	timer := time.NewTimer(nextPollInterval())
+	defer timer.Stop()
+	for {
+		// TODO: check if there are any active msg
+		if false {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			timer.Reset(nextPollInterval())
+		}
+	}
 }
 
 func (e *Engine) shuttingDown() bool {
