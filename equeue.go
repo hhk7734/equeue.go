@@ -150,11 +150,19 @@ func (e *Engine) stopConsumers() error {
 	return err
 }
 
-func (e *Engine) Close() {
+func (e *Engine) Close() error {
 	e.inShutdown.Store(true)
 
-	e.stopConsumers()
+	var err error
+
+	err = e.stopConsumers()
 	e.consumerGroup.Wait()
+
+	if derr := e.driver.Close(); derr != nil && err == nil {
+		err = derr
+	}
+
+	return err
 }
 
 const shutdownPollIntervalMax = 500 * time.Millisecond
@@ -162,7 +170,9 @@ const shutdownPollIntervalMax = 500 * time.Millisecond
 func (e *Engine) Shutdown(ctx context.Context) error {
 	e.inShutdown.Store(true)
 
-	conErr := e.stopConsumers()
+	var err error
+
+	err = e.stopConsumers()
 	e.consumerGroup.Wait()
 
 	pollIntervalBase := time.Millisecond
@@ -180,7 +190,7 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	for {
 		// TODO: check if there are any active worker
 		if false {
-			return conErr
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -189,6 +199,11 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 			timer.Reset(nextPollInterval())
 		}
 	}
+
+	if derr := e.driver.Close(); derr != nil && err == nil {
+		err = derr
+	}
+	return err
 }
 
 func (e *Engine) shuttingDown() bool {
