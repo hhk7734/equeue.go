@@ -11,4 +11,6 @@ type Consumer interface {
 
 type Message interface {
 	Event() *event.Event
+	Ack()
+	Nack()
 }

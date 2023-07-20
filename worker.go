@@ -18,6 +18,11 @@ func (w *worker) run() {
 	c.handlers = w.subscription.handlers
 	c.ctx, w.cancelCtx = context.WithCancel(context.Background())
 	c.Next()
+	if c.IsNack() {
+		w.message.Nack()
+	} else {
+		w.message.Ack()
+	}
 	w.engine.pool.Put(c)
 }
 
