@@ -36,8 +36,12 @@ func (n *natsDriver) Client() nats.JetStreamContext {
 }
 
 func (n *natsDriver) Publish(ctx context.Context, topic string, event *event.Event) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
 	// TODO: custom subject from topic and Event
-	_, err := n.js.Publish(topic, event.Data(), nats.ExpectStream(topic))
+	_, err = n.js.Publish(topic, data, nats.ExpectStream(topic))
 	return err
 }
 
