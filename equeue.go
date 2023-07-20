@@ -2,6 +2,7 @@ package equeue
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 )
 
@@ -9,21 +10,36 @@ type HandlerFunc func(*Context)
 
 type HandlersChain []HandlerFunc
 
+func New() *Engine {
+	engine := &Engine{
+		RouterGroup: RouterGroup{
+			root: true,
+		},
+	}
+	engine.RouterGroup.engine = engine
+	engine.pool.New = func() interface{} {
+		return engine.newContext()
+	}
+	return engine
+}
+
 type Engine struct {
 	RouterGroup
 
 	subscriptions []subscription
 	inShutdown    atomic.Bool
+
+	pool sync.Pool
 }
 
 var _ Router = new(Engine)
 
-func (engine *Engine) addRoute(topic string, subscriptionName string, handlers HandlersChain) {
+func (e *Engine) addRoute(topic string, subscriptionName string, handlers HandlersChain) {
 	if topic == "" {
 		panic("topic can not be empty")
 	}
 
-	for _, s := range engine.subscriptions {
+	for _, s := range e.subscriptions {
 		if s.Topic == topic && s.SubscriptionName == subscriptionName {
 			panic("duplicated subscription")
 		}
@@ -33,11 +49,15 @@ func (engine *Engine) addRoute(topic string, subscriptionName string, handlers H
 		panic("there must be at least one handler")
 	}
 
-	engine.subscriptions = append(engine.subscriptions, subscription{
+	e.subscriptions = append(e.subscriptions, subscription{
 		Topic:            topic,
 		SubscriptionName: subscriptionName,
 		Handlers:         handlers,
 	})
+}
+
+func (e *Engine) newContext() *Context {
+	return &Context{}
 }
 
 type subscription struct {
