@@ -33,7 +33,7 @@ type subscription struct {
 	handlers         HandlersChain
 }
 
-type subsTree map[string]map[string]subscription
+type subsTree map[string]map[string]*subscription
 
 type Engine struct {
 	RouterGroup
@@ -48,6 +48,8 @@ type Engine struct {
 	mu            sync.Mutex
 	consumers     map[*Consumer]struct{}
 	consumerGroup sync.WaitGroup
+
+	activeWorkers map[*worker]struct{}
 }
 
 var _ Router = new(Engine)
@@ -66,14 +68,14 @@ func (e *Engine) addRoute(topic string, subscriptionName string, maxWorker int, 
 	}
 
 	if _, ok := e.tree[topic]; !ok {
-		e.tree[topic] = make(map[string]subscription)
+		e.tree[topic] = make(map[string]*subscription)
 	}
 
 	if _, ok := e.tree[topic][subscriptionName]; ok {
 		panic("duplicated subscription")
 	}
 
-	e.tree[topic][subscriptionName] = subscription{
+	e.tree[topic][subscriptionName] = &subscription{
 		topic:            topic,
 		subscriptionName: subscriptionName,
 		maxWorker:        maxWorker,
@@ -92,22 +94,32 @@ func (e *Engine) Run() error {
 	defer e.Close()
 
 	for topic, subs := range e.tree {
-		for subscriptionName := range subs {
-			consumer, err := e.driver.Consumer(topic, subscriptionName)
+		for subName, sub := range subs {
+			consumer, err := e.driver.Consumer(topic, subName)
 			if err != nil {
 				return err
 			}
 			if ok := e.trackConsumer(&consumer, true); !ok {
 				return ErrServerClosed
 			}
+
+			s := sub
 			go func() {
 				defer e.trackConsumer(&consumer, false)
 				for {
 					if e.shuttingDown() {
 						return
 					}
-					// TODO: receive mess
-					// TODO: worker
+					msg, err := consumer.Receive()
+					if err != nil {
+						// TODO: handle error
+						return
+					}
+					w := e.newWorker(s, msg)
+					if ok := e.trackWorker(w, true); !ok {
+						return
+					}
+					go w.run()
 				}
 			}()
 		}
@@ -150,6 +162,38 @@ func (e *Engine) stopConsumers() error {
 	return err
 }
 
+func (e *Engine) newWorker(s *subscription, m Message) *worker {
+	return &worker{engine: e, subscription: s, message: m}
+}
+
+func (e *Engine) trackWorker(w *worker, add bool) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.activeWorkers == nil {
+		e.activeWorkers = make(map[*worker]struct{})
+	}
+
+	if add {
+		if e.shuttingDown() {
+			return false
+		}
+		e.activeWorkers[w] = struct{}{}
+	} else {
+		delete(e.activeWorkers, w)
+	}
+	return true
+}
+
+func (e *Engine) cancelWorkers() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for w := range e.activeWorkers {
+		w.cancel()
+	}
+}
+
 func (e *Engine) Close() error {
 	e.inShutdown.Store(true)
 
@@ -157,6 +201,9 @@ func (e *Engine) Close() error {
 
 	err = e.stopConsumers()
 	e.consumerGroup.Wait()
+
+	e.cancelWorkers()
+	time.Sleep(1 * time.Second)
 
 	if derr := e.driver.Close(); derr != nil && err == nil {
 		err = derr
@@ -175,7 +222,10 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	err = e.stopConsumers()
 	e.consumerGroup.Wait()
 
-	pollIntervalBase := time.Millisecond
+	e.cancelWorkers()
+
+	// Wait for active workers.
+	pollIntervalBase := 10 * time.Millisecond
 	nextPollInterval := func() time.Duration {
 		interval := pollIntervalBase + time.Duration(rand.Intn(int(pollIntervalBase/10)))
 		pollIntervalBase *= 2
@@ -188,10 +238,12 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	timer := time.NewTimer(nextPollInterval())
 	defer timer.Stop()
 	for {
-		// TODO: check if there are any active worker
-		if false {
+		e.mu.Lock()
+		if len(e.activeWorkers) == 0 {
+			e.mu.Unlock()
 			break
 		}
+		e.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
