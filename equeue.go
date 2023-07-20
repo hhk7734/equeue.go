@@ -15,6 +15,7 @@ func New() *Engine {
 		RouterGroup: RouterGroup{
 			root: true,
 		},
+		tree: make(map[string]map[string]HandlersChain),
 	}
 	engine.RouterGroup.engine = engine
 	engine.pool.New = func() interface{} {
@@ -26,10 +27,10 @@ func New() *Engine {
 type Engine struct {
 	RouterGroup
 
-	subscriptions []subscription
-	inShutdown    atomic.Bool
+	inShutdown atomic.Bool
 
 	pool sync.Pool
+	tree map[string]map[string]HandlersChain
 }
 
 var _ Router = new(Engine)
@@ -39,31 +40,27 @@ func (e *Engine) addRoute(topic string, subscriptionName string, handlers Handle
 		panic("topic can not be empty")
 	}
 
-	for _, s := range e.subscriptions {
-		if s.Topic == topic && s.SubscriptionName == subscriptionName {
-			panic("duplicated subscription")
-		}
+	if subscriptionName == "" {
+		panic("subscription name can not be empty")
 	}
 
 	if len(handlers) == 0 {
 		panic("there must be at least one handler")
 	}
 
-	e.subscriptions = append(e.subscriptions, subscription{
-		Topic:            topic,
-		SubscriptionName: subscriptionName,
-		Handlers:         handlers,
-	})
+	if _, ok := e.tree[topic]; !ok {
+		e.tree[topic] = make(map[string]HandlersChain)
+	}
+
+	if _, ok := e.tree[topic][subscriptionName]; ok {
+		panic("duplicated subscription")
+	}
+
+	e.tree[topic][subscriptionName] = handlers
 }
 
 func (e *Engine) newContext() *Context {
 	return &Context{}
-}
-
-type subscription struct {
-	Topic            string
-	SubscriptionName string
-	Handlers         HandlersChain
 }
 
 func (e *Engine) Subscribe() error {
