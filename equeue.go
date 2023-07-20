@@ -63,11 +63,17 @@ func (e *Engine) newContext() *Context {
 	return &Context{}
 }
 
-func (e *Engine) Subscribe() error {
+func (e *Engine) Run() error {
 	if e.shuttingDown() {
 		return ErrServerClosed
 	}
+	defer e.Close()
+
 	return nil
+}
+
+func (e *Engine) Close() {
+	e.inShutdown.Store(true)
 }
 
 func (e *Engine) Shutdown(ctx context.Context) error {
