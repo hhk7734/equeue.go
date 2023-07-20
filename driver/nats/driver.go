@@ -88,6 +88,8 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 		switch {
 		case errors.Is(err, nats.ErrTimeout):
 			continue
+		case errors.Is(err, context.DeadlineExceeded):
+			continue
 		case errors.Is(err, context.Canceled):
 			return nil, equeue.ErrConsumerStopped
 		case err != nil:
