@@ -1,6 +1,7 @@
 package equeue
 
 import (
+	"context"
 	"math"
 
 	"github.com/cloudevents/sdk-go/v2/event"
@@ -14,6 +15,8 @@ type Context struct {
 	handlers HandlersChain
 	index    int8
 	nack     bool
+
+	ctx context.Context
 
 	Errors []error
 }
@@ -65,4 +68,8 @@ func (c *Context) Error(err error) {
 	}
 
 	c.Errors = append(c.Errors, err)
+}
+
+func (c *Context) Done() <-chan struct{} {
+	return c.ctx.Done()
 }
