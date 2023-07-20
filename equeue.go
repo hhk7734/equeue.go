@@ -104,6 +104,8 @@ func (e *Engine) Run() error {
 	}
 	defer e.Close()
 
+	consumerErr := make(chan error, 1)
+
 	for topic, subs := range e.tree {
 		for subName, sub := range subs {
 			consumer, err := e.driver.Consumer(topic, subName, sub.maxWorker)
@@ -117,6 +119,11 @@ func (e *Engine) Run() error {
 			s := sub
 			go func() {
 				defer e.trackConsumer(&consumer, false)
+				defer func() {
+					// TODO: log error
+					recover()
+				}()
+
 				for {
 					if e.shuttingDown() {
 						return
@@ -126,7 +133,8 @@ func (e *Engine) Run() error {
 					case errors.Is(err, ErrConsumerStopped):
 						return
 					case err != nil:
-						// TODO: handle error
+						consumerErr <- err
+						close(consumerErr)
 						return
 					}
 					w := e.newWorker(s, msg)
@@ -139,7 +147,7 @@ func (e *Engine) Run() error {
 		}
 	}
 
-	return nil
+	return <-consumerErr
 }
 
 func (e *Engine) trackConsumer(c *Consumer, add bool) bool {
