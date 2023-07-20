@@ -13,6 +13,7 @@ type Context struct {
 
 	handlers HandlersChain
 	index    int8
+	nack     bool
 
 	Errors []error
 }
@@ -36,9 +37,26 @@ func (c *Context) Abort() {
 	c.index = abortIndex
 }
 
+func (c *Context) IsAborted() bool {
+	return c.index >= abortIndex
+}
+
+func (c *Context) AbortWithNack() {
+	c.Nack()
+	c.Abort()
+}
+
 func (c *Context) AbortWithError(err error) {
 	c.Error(err)
 	c.Abort()
+}
+
+func (c *Context) Nack() {
+	c.nack = true
+}
+
+func (c *Context) IsNack() bool {
+	return c.nack
 }
 
 func (c *Context) Error(err error) {
