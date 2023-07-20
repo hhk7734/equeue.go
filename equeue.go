@@ -17,7 +17,7 @@ func New() *Engine {
 		RouterGroup: RouterGroup{
 			root: true,
 		},
-		tree: make(map[string]map[string]HandlersChain),
+		tree: make(subsTree),
 	}
 	engine.RouterGroup.engine = engine
 	engine.pool.New = func() interface{} {
@@ -26,18 +26,27 @@ func New() *Engine {
 	return engine
 }
 
+type subscription struct {
+	topic            string
+	subscriptionName string
+	maxWorker        int
+	handlers         HandlersChain
+}
+
+type subsTree map[string]map[string]subscription
+
 type Engine struct {
 	RouterGroup
 
 	inShutdown atomic.Bool
 
 	pool sync.Pool
-	tree map[string]map[string]HandlersChain
+	tree subsTree
 }
 
 var _ Router = new(Engine)
 
-func (e *Engine) addRoute(topic string, subscriptionName string, handlers HandlersChain) {
+func (e *Engine) addRoute(topic string, subscriptionName string, maxWorker int, handlers HandlersChain) {
 	if topic == "" {
 		panic("topic can not be empty")
 	}
@@ -51,14 +60,19 @@ func (e *Engine) addRoute(topic string, subscriptionName string, handlers Handle
 	}
 
 	if _, ok := e.tree[topic]; !ok {
-		e.tree[topic] = make(map[string]HandlersChain)
+		e.tree[topic] = make(map[string]subscription)
 	}
 
 	if _, ok := e.tree[topic][subscriptionName]; ok {
 		panic("duplicated subscription")
 	}
 
-	e.tree[topic][subscriptionName] = handlers
+	e.tree[topic][subscriptionName] = subscription{
+		topic:            topic,
+		subscriptionName: subscriptionName,
+		maxWorker:        maxWorker,
+		handlers:         handlers,
+	}
 }
 
 func (e *Engine) newContext() *Context {

@@ -8,7 +8,7 @@ type Router interface {
 type Routes interface {
 	Use(handlers ...HandlerFunc) Routes
 
-	Handle(topic string, subscriptionName string, handlers ...HandlerFunc) Routes
+	Handle(topic string, subscriptionName string, maxWorker int, handlers ...HandlerFunc) Routes
 }
 
 type RouterGroup struct {
@@ -33,8 +33,12 @@ func (g *RouterGroup) Group(relativeTopic string, handlers ...HandlerFunc) *Rout
 	}
 }
 
-func (g *RouterGroup) Handle(relativeTopic string, subscriptionName string, handlers ...HandlerFunc) Routes {
-	g.engine.addRoute(g.absoluteTopic(relativeTopic), subscriptionName, g.combineHandlers(handlers))
+func (g *RouterGroup) Handle(relativeTopic string, subscriptionName string, maxWorker int, handlers ...HandlerFunc) Routes {
+	g.engine.addRoute(
+		g.absoluteTopic(relativeTopic),
+		subscriptionName,
+		maxWorker,
+		g.combineHandlers(handlers))
 	return g.returnObj()
 }
 
