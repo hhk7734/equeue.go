@@ -120,7 +120,7 @@ func (e *Engine) Run() error {
 					}
 					msg, err := consumer.Receive()
 					switch {
-					case errors.Is(err, ErrConsumerStoped):
+					case errors.Is(err, ErrConsumerStopped):
 						return
 					case err != nil:
 						// TODO: handle error
