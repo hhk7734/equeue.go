@@ -1,6 +1,9 @@
 package equeue
 
-import "context"
+import (
+	"context"
+	"sync/atomic"
+)
 
 type HandlerFunc func(*Context)
 
@@ -10,6 +13,7 @@ type Engine struct {
 	RouterGroup
 
 	subscriptions []subscription
+	inShutdown    atomic.Bool
 }
 
 var _ Router = new(Engine)
@@ -43,9 +47,17 @@ type subscription struct {
 }
 
 func (e *Engine) Subscribe() error {
+	if e.shuttingDown() {
+		return ErrServerClosed
+	}
 	return nil
 }
 
 func (e *Engine) Shutdown(ctx context.Context) error {
+	e.inShutdown.Store(true)
 	return nil
+}
+
+func (e *Engine) shuttingDown() bool {
+	return e.inShutdown.Load()
 }
