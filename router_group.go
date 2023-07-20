@@ -8,15 +8,14 @@ type Router interface {
 type Routes interface {
 	Use(handlers ...HandlerFunc) Routes
 
-	HandleWithTopic(topic string, subscriptionName string, handlers ...HandlerFunc) Routes
-	Handle(subscriptionName string, handlers ...HandlerFunc) Routes
+	Handle(topic string, subscriptionName string, handlers ...HandlerFunc) Routes
 }
 
 type RouterGroup struct {
-	Handlers HandlersChain
-	topic    string
-	engine   *Engine
-	root     bool
+	Handlers  HandlersChain
+	baseTopic string
+	engine    *Engine
+	root      bool
 }
 
 var _ Router = new(RouterGroup)
@@ -26,22 +25,17 @@ func (g *RouterGroup) Use(middleware ...HandlerFunc) Routes {
 	return g.returnObj()
 }
 
-func (g *RouterGroup) Group(topic string, handlers ...HandlerFunc) *RouterGroup {
+func (g *RouterGroup) Group(relativeTopic string, handlers ...HandlerFunc) *RouterGroup {
 	return &RouterGroup{
-		Handlers: g.combineHandlers(handlers),
-		topic:    g.topicIfNil(topic),
-		engine:   g.engine,
+		Handlers:  g.combineHandlers(handlers),
+		baseTopic: g.absoluteTopic(relativeTopic),
+		engine:    g.engine,
 	}
 }
 
-func (g *RouterGroup) HandleWithTopic(topic string, subscriptionName string, handlers ...HandlerFunc) Routes {
-	handlers = g.combineHandlers(handlers)
-	g.engine.addRoute(g.topicIfNil(topic), subscriptionName, handlers)
+func (g *RouterGroup) Handle(relativeTopic string, subscriptionName string, handlers ...HandlerFunc) Routes {
+	g.engine.addRoute(g.absoluteTopic(relativeTopic), subscriptionName, g.combineHandlers(handlers))
 	return g.returnObj()
-}
-
-func (g *RouterGroup) Handle(subscriptionName string, handlers ...HandlerFunc) Routes {
-	return g.HandleWithTopic(g.topic, subscriptionName, handlers...)
 }
 
 func (g *RouterGroup) combineHandlers(handlers HandlersChain) HandlersChain {
@@ -55,14 +49,8 @@ func (g *RouterGroup) combineHandlers(handlers HandlersChain) HandlersChain {
 	return mergedHandlers
 }
 
-func (g *RouterGroup) topicIfNil(topic string) string {
-	if topic == "" {
-		if g.topic == "" {
-			panic("topic can not be empty")
-		}
-		return g.topic
-	}
-	return topic
+func (g *RouterGroup) absoluteTopic(relativeTopic string) string {
+	return g.baseTopic + relativeTopic
 }
 
 func (g *RouterGroup) returnObj() Routes {
