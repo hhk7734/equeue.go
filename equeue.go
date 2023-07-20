@@ -2,6 +2,7 @@ package equeue
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -111,7 +112,10 @@ func (e *Engine) Run() error {
 						return
 					}
 					msg, err := consumer.Receive()
-					if err != nil {
+					switch {
+					case errors.Is(err, ErrConsumerStoped):
+						return
+					case err != nil:
 						// TODO: handle error
 						return
 					}
