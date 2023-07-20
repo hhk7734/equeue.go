@@ -137,13 +137,13 @@ func (e *Engine) trackConsumer(c *Consumer, add bool) bool {
 	return true
 }
 
-func (e *Engine) closeConsumers() error {
+func (e *Engine) stopConsumers() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	var err error
 	for c := range e.consumers {
-		if cerr := (*c).Close(); cerr != nil && err == nil {
+		if cerr := (*c).Stop(); cerr != nil && err == nil {
 			err = cerr
 		}
 	}
@@ -153,7 +153,7 @@ func (e *Engine) closeConsumers() error {
 func (e *Engine) Close() {
 	e.inShutdown.Store(true)
 
-	e.closeConsumers()
+	e.stopConsumers()
 	e.consumerGroup.Wait()
 }
 
@@ -162,7 +162,7 @@ const shutdownPollIntervalMax = 500 * time.Millisecond
 func (e *Engine) Shutdown(ctx context.Context) error {
 	e.inShutdown.Store(true)
 
-	conErr := e.closeConsumers()
+	conErr := e.stopConsumers()
 	e.consumerGroup.Wait()
 
 	pollIntervalBase := time.Millisecond

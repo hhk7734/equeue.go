@@ -1,5 +1,5 @@
 package equeue
 
 type Consumer interface {
-	Close() error
+	Stop() error
 }
