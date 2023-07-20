@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudevents/sdk-go/v2/event"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 type HandlerFunc func(*Context)
@@ -91,7 +91,7 @@ func (e *Engine) newContext() *Context {
 	return &Context{engine: e}
 }
 
-func (e *Engine) Publish(ctx context.Context, topic string, event *event.Event) error {
+func (e *Engine) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
 	if err := event.Validate(); err != nil {
 		return err
 	}

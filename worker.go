@@ -1,6 +1,8 @@
 package equeue
 
-import "context"
+import (
+	"context"
+)
 
 type worker struct {
 	engine       *Engine

@@ -1,6 +1,8 @@
 package equeue
 
-import "github.com/cloudevents/sdk-go/v2/event"
+import (
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+)
 
 type Consumer interface {
 	// Receive blocks until a message is received or an error occurs. If Consumer is stopped,
@@ -10,7 +12,7 @@ type Consumer interface {
 }
 
 type Message interface {
-	Event() *event.Event
+	Event() *cloudevents.Event
 	Ack()
 	Nack()
 }

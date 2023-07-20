@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/cloudevents/sdk-go/v2/event"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/hhk7734/equeue.go"
 	"github.com/nats-io/nats.go"
 )
@@ -35,7 +35,7 @@ func (n *natsDriver) Client() nats.JetStreamContext {
 	return n.js
 }
 
-func (n *natsDriver) Publish(ctx context.Context, topic string, event *event.Event) error {
+func (n *natsDriver) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 		}
 		nMsg := nMsgs[0]
 
-		event := event.New()
+		event := cloudevents.NewEvent()
 		if err := json.Unmarshal(nMsg.Data, &event); err != nil {
 			return nil, err
 		}
@@ -122,10 +122,10 @@ var _ equeue.Message = new(natsMessage)
 
 type natsMessage struct {
 	msg   *nats.Msg
-	event *event.Event
+	event *cloudevents.Event
 }
 
-func (n *natsMessage) Event() *event.Event {
+func (n *natsMessage) Event() *cloudevents.Event {
 	return n.event
 }
 
