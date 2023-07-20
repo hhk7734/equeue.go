@@ -38,10 +38,16 @@ type subsTree map[string]map[string]subscription
 type Engine struct {
 	RouterGroup
 
+	driver Driver
+
 	inShutdown atomic.Bool
 
 	pool sync.Pool
 	tree subsTree
+
+	mu            sync.Mutex
+	consumers     map[*Consumer]struct{}
+	consumerGroup sync.WaitGroup
 }
 
 var _ Router = new(Engine)
@@ -85,11 +91,70 @@ func (e *Engine) Run() error {
 	}
 	defer e.Close()
 
+	for topic, subs := range e.tree {
+		for subscriptionName := range subs {
+			consumer, err := e.driver.Consumer(topic, subscriptionName)
+			if err != nil {
+				return err
+			}
+			if ok := e.trackConsumer(&consumer, true); !ok {
+				return ErrServerClosed
+			}
+			go func() {
+				defer e.trackConsumer(&consumer, false)
+				for {
+					if e.shuttingDown() {
+						return
+					}
+					// TODO: receive mess
+					// TODO: worker
+				}
+			}()
+		}
+	}
+
 	return nil
+}
+
+func (e *Engine) trackConsumer(c *Consumer, add bool) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.consumers == nil {
+		e.consumers = make(map[*Consumer]struct{})
+	}
+
+	if add {
+		if e.shuttingDown() {
+			return false
+		}
+		e.consumers[c] = struct{}{}
+		e.consumerGroup.Add(1)
+	} else {
+		delete(e.consumers, c)
+		e.consumerGroup.Done()
+	}
+	return true
+}
+
+func (e *Engine) closeConsumers() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	var err error
+	for c := range e.consumers {
+		if cerr := (*c).Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}
+	return err
 }
 
 func (e *Engine) Close() {
 	e.inShutdown.Store(true)
+
+	e.closeConsumers()
+	e.consumerGroup.Wait()
 }
 
 const shutdownPollIntervalMax = 500 * time.Millisecond
@@ -97,7 +162,8 @@ const shutdownPollIntervalMax = 500 * time.Millisecond
 func (e *Engine) Shutdown(ctx context.Context) error {
 	e.inShutdown.Store(true)
 
-	// TODO: Close consumers
+	conErr := e.closeConsumers()
+	e.consumerGroup.Wait()
 
 	pollIntervalBase := time.Millisecond
 	nextPollInterval := func() time.Duration {
@@ -112,9 +178,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	timer := time.NewTimer(nextPollInterval())
 	defer timer.Stop()
 	for {
-		// TODO: check if there are any active msg
+		// TODO: check if there are any active worker
 		if false {
-			return nil
+			return conErr
 		}
 		select {
 		case <-ctx.Done():
