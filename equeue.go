@@ -7,18 +7,21 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cloudevents/sdk-go/v2/event"
 )
 
 type HandlerFunc func(*Context)
 
 type HandlersChain []HandlerFunc
 
-func New() *Engine {
+func New(d Driver) *Engine {
 	engine := &Engine{
 		RouterGroup: RouterGroup{
 			root: true,
 		},
-		tree: make(subsTree),
+		driver: d,
+		tree:   make(subsTree),
 	}
 	engine.RouterGroup.engine = engine
 	engine.pool.New = func() interface{} {
@@ -85,7 +88,11 @@ func (e *Engine) addRoute(topic string, subscriptionName string, maxWorker int, 
 }
 
 func (e *Engine) newContext() *Context {
-	return &Context{}
+	return &Context{engine: e}
+}
+
+func (e *Engine) Publish(ctx context.Context, topic string, event *event.Event) error {
+	return e.driver.Publish(ctx, topic, event)
 }
 
 func (e *Engine) Run() error {

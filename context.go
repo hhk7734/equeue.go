@@ -10,13 +10,14 @@ import (
 const abortIndex int8 = math.MaxInt8 >> 1
 
 type Context struct {
+	engine *Engine
+
 	Event *event.Event
+	ctx   context.Context
 
 	handlers HandlersChain
 	index    int8
 	nack     bool
-
-	ctx context.Context
 
 	Errors []error
 }
@@ -24,8 +25,13 @@ type Context struct {
 func (c *Context) reset() {
 	c.handlers = nil
 	c.index = -1
+	c.nack = false
 
 	c.Errors = c.Errors[:0]
+}
+
+func (c *Context) Publish(ctx context.Context, topic string, event *event.Event) error {
+	return c.engine.Publish(ctx, topic, event)
 }
 
 func (c *Context) Next() {
