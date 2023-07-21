@@ -20,10 +20,10 @@ func New(d Driver) *Engine {
 		RouterGroup: RouterGroup{
 			root: true,
 		},
-		driver:        d,
-		tree:          make(subsTree),
-		consumers:     make(map[*Consumer]struct{}),
-		activeWorkers: make(map[*subscription]map[*worker]struct{}),
+		driver:                       d,
+		tree:                         make(subsTree),
+		consumers:                    make(map[*Consumer]struct{}),
+		subscriptionActiveWorkersMap: make(map[*subscription]map[*worker]struct{}),
 	}
 	engine.RouterGroup.engine = engine
 	engine.pool.New = func() interface{} {
@@ -55,7 +55,7 @@ type Engine struct {
 	consumers     map[*Consumer]struct{}
 	consumerGroup sync.WaitGroup
 
-	activeWorkers map[*subscription]map[*worker]struct{}
+	subscriptionActiveWorkersMap map[*subscription]map[*worker]struct{}
 }
 
 var _ Router = new(Engine)
@@ -90,9 +90,9 @@ func (e *Engine) addRoute(topic string, subscriptionName string, maxWorker int, 
 
 	e.tree[topic][subscriptionName] = sub
 	if sub.maxWorker <= 0 {
-		e.activeWorkers[sub] = make(map[*worker]struct{})
+		e.subscriptionActiveWorkersMap[sub] = make(map[*worker]struct{})
 	} else {
-		e.activeWorkers[sub] = make(map[*worker]struct{}, sub.maxWorker)
+		e.subscriptionActiveWorkersMap[sub] = make(map[*worker]struct{}, sub.maxWorker)
 	}
 }
 
@@ -206,9 +206,9 @@ func (e *Engine) trackWorker(w *worker, add bool) bool {
 		if e.shuttingDown() {
 			return false
 		}
-		e.activeWorkers[w.subscription][w] = struct{}{}
+		e.subscriptionActiveWorkersMap[w.subscription][w] = struct{}{}
 	} else {
-		delete(e.activeWorkers[w.subscription], w)
+		delete(e.subscriptionActiveWorkersMap[w.subscription], w)
 	}
 	return true
 }
@@ -217,14 +217,25 @@ func (e *Engine) countActiveWorkers(s *subscription) int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	return len(e.activeWorkers[s])
+	return len(e.subscriptionActiveWorkersMap[s])
+}
+
+func (e *Engine) countActiveWorkersAll() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	var count int
+	for _, workers := range e.subscriptionActiveWorkersMap {
+		count += len(workers)
+	}
+	return count
 }
 
 func (e *Engine) cancelWorkers() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	for _, workers := range e.activeWorkers {
+	for _, workers := range e.subscriptionActiveWorkersMap {
 		for w := range workers {
 			w.cancel()
 		}
@@ -305,12 +316,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	timer := time.NewTimer(nextPollInterval())
 	defer timer.Stop()
 	for {
-		e.mu.Lock()
-		if len(e.activeWorkers) == 0 {
-			e.mu.Unlock()
+		if e.countActiveWorkersAll() == 0 {
 			break
 		}
-		e.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
