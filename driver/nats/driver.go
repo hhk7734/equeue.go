@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math/rand"
-	"sync"
-	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/hhk7734/equeue.go"
@@ -47,7 +44,7 @@ func (n *natsDriver) Publish(ctx context.Context, topic string, event cloudevent
 	return err
 }
 
-func (n *natsDriver) Consumer(topic string, subscriptionName string, maxAckPending int) (equeue.Consumer, error) {
+func (n *natsDriver) Consumer(topic string, subscriptionName string) (equeue.Consumer, error) {
 	if _, err := n.js.ConsumerInfo(topic, subscriptionName); err != nil {
 		return nil, err
 	}
@@ -59,7 +56,7 @@ func (n *natsDriver) Consumer(topic string, subscriptionName string, maxAckPendi
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
-	return &natsConsumer{sub: sub, maxAckPending: maxAckPending, ctx: ctx, cancelCtx: cancelCtx}, nil
+	return &natsConsumer{sub: sub, ctx: ctx, cancelCtx: cancelCtx}, nil
 }
 
 func (n *natsDriver) Close() error {
@@ -69,13 +66,9 @@ func (n *natsDriver) Close() error {
 var _ equeue.Consumer = new(natsConsumer)
 
 type natsConsumer struct {
-	sub           *nats.Subscription
-	maxAckPending int
-	ctx           context.Context
-	cancelCtx     context.CancelFunc
-
-	mu             sync.Mutex
-	activeMessages map[*natsMessage]struct{}
+	sub       *nats.Subscription
+	ctx       context.Context
+	cancelCtx context.CancelFunc
 }
 
 func (n *natsConsumer) Receive() (equeue.Message, error) {
@@ -85,14 +78,6 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 			return nil, equeue.ErrConsumerStopped
 		default:
 		}
-
-		n.mu.Lock()
-		if n.maxAckPending > 0 && len(n.activeMessages) >= n.maxAckPending {
-			n.mu.Unlock()
-			time.Sleep(2*time.Second + time.Duration(rand.Intn(int(time.Second))))
-			continue
-		}
-		n.mu.Unlock()
 
 		nMsgs, err := n.sub.Fetch(1, nats.Context(n.ctx))
 		switch {
@@ -114,10 +99,6 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 
 		msg := &natsMessage{msg: nMsg, event: &event, consumer: n}
 
-		if !n.trackMessages(msg, true) {
-			return nil, equeue.ErrConsumerStopped
-		}
-
 		return msg, nil
 	}
 }
@@ -125,28 +106,6 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 func (n *natsConsumer) Stop() error {
 	n.cancelCtx()
 	return nil
-}
-
-func (n *natsConsumer) trackMessages(msg *natsMessage, add bool) bool {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	if n.activeMessages == nil {
-		n.activeMessages = make(map[*natsMessage]struct{})
-	}
-
-	if add {
-		select {
-		case <-n.ctx.Done():
-			return false
-		default:
-		}
-		n.activeMessages[msg] = struct{}{}
-	} else {
-		delete(n.activeMessages, msg)
-	}
-
-	return true
 }
 
 var _ equeue.Message = new(natsMessage)
@@ -163,10 +122,8 @@ func (n *natsMessage) Event() *cloudevents.Event {
 
 func (n *natsMessage) Ack() {
 	n.msg.Ack()
-	n.consumer.trackMessages(n, false)
 }
 
 func (n *natsMessage) Nack() {
 	n.msg.Nak()
-	n.consumer.trackMessages(n, false)
 }

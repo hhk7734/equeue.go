@@ -117,7 +117,7 @@ func (e *Engine) Run() error {
 
 	for topic, subs := range e.tree {
 		for subName, sub := range subs {
-			consumer, err := e.driver.Consumer(topic, subName, sub.maxWorker)
+			consumer, err := e.driver.Consumer(topic, subName)
 			if err != nil {
 				return err
 			}
