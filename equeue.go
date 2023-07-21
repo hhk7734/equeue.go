@@ -137,6 +137,11 @@ func (e *Engine) Run() error {
 					if e.shuttingDown() {
 						return
 					}
+					if s.maxWorker > 0 && e.countActiveWorkers(s) >= s.maxWorker {
+						time.Sleep(2*time.Second + time.Duration(rand.Intn(int(time.Second))))
+						continue
+					}
+
 					msg, err := consumer.Receive()
 					switch {
 					case errors.Is(err, ErrConsumerStopped):
@@ -206,6 +211,13 @@ func (e *Engine) trackWorker(w *worker, add bool) bool {
 		delete(e.activeWorkers[w.subscription], w)
 	}
 	return true
+}
+
+func (e *Engine) countActiveWorkers(s *subscription) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return len(e.activeWorkers[s])
 }
 
 func (e *Engine) cancelWorkers() {
