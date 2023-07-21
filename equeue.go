@@ -53,7 +53,7 @@ type Engine struct {
 	consumers     map[*Consumer]struct{}
 	consumerGroup sync.WaitGroup
 
-	activeWorkers map[*worker]struct{}
+	activeWorkers map[*subscription]map[*worker]struct{}
 }
 
 var _ Router = new(Engine)
@@ -193,16 +193,20 @@ func (e *Engine) trackWorker(w *worker, add bool) bool {
 	defer e.mu.Unlock()
 
 	if e.activeWorkers == nil {
-		e.activeWorkers = make(map[*worker]struct{})
+		e.activeWorkers = make(map[*subscription]map[*worker]struct{})
+	}
+
+	if _, ok := e.activeWorkers[w.subscription]; !ok {
+		e.activeWorkers[w.subscription] = make(map[*worker]struct{})
 	}
 
 	if add {
 		if e.shuttingDown() {
 			return false
 		}
-		e.activeWorkers[w] = struct{}{}
+		e.activeWorkers[w.subscription][w] = struct{}{}
 	} else {
-		delete(e.activeWorkers, w)
+		delete(e.activeWorkers[w.subscription], w)
 	}
 	return true
 }
@@ -211,8 +215,40 @@ func (e *Engine) cancelWorkers() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	for w := range e.activeWorkers {
-		w.cancel()
+	for _, workers := range e.activeWorkers {
+		for w := range workers {
+			w.cancel()
+		}
+	}
+}
+
+type worker struct {
+	engine       *Engine
+	subscription *subscription
+	message      Message
+	cancelCtx    context.CancelFunc
+}
+
+func (w *worker) run() {
+	defer w.engine.trackWorker(w, false)
+
+	c := w.engine.pool.Get().(*Context)
+	c.reset()
+	c.Event = w.message.Event()
+	c.handlers = w.subscription.handlers
+	c.ctx, w.cancelCtx = context.WithCancel(context.Background())
+	c.Next()
+	if c.IsNack() {
+		w.message.Nack()
+	} else {
+		w.message.Ack()
+	}
+	w.engine.pool.Put(c)
+}
+
+func (w *worker) cancel() {
+	if w.cancelCtx != nil {
+		w.cancelCtx()
 	}
 }
 
