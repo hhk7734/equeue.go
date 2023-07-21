@@ -20,8 +20,10 @@ func New(d Driver) *Engine {
 		RouterGroup: RouterGroup{
 			root: true,
 		},
-		driver: d,
-		tree:   make(subsTree),
+		driver:        d,
+		tree:          make(subsTree),
+		consumers:     make(map[*Consumer]struct{}),
+		activeWorkers: make(map[*subscription]map[*worker]struct{}),
 	}
 	engine.RouterGroup.engine = engine
 	engine.pool.New = func() interface{} {
@@ -79,11 +81,18 @@ func (e *Engine) addRoute(topic string, subscriptionName string, maxWorker int, 
 		panic("duplicated subscription")
 	}
 
-	e.tree[topic][subscriptionName] = &subscription{
+	sub := &subscription{
 		topic:            topic,
 		subscriptionName: subscriptionName,
 		maxWorker:        maxWorker,
 		handlers:         handlers,
+	}
+
+	e.tree[topic][subscriptionName] = sub
+	if sub.maxWorker <= 0 {
+		e.activeWorkers[sub] = make(map[*worker]struct{})
+	} else {
+		e.activeWorkers[sub] = make(map[*worker]struct{}, sub.maxWorker)
 	}
 }
 
@@ -154,10 +163,6 @@ func (e *Engine) trackConsumer(c *Consumer, add bool) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if e.consumers == nil {
-		e.consumers = make(map[*Consumer]struct{})
-	}
-
 	if add {
 		if e.shuttingDown() {
 			return false
@@ -191,14 +196,6 @@ func (e *Engine) newWorker(s *subscription, m Message) *worker {
 func (e *Engine) trackWorker(w *worker, add bool) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-
-	if e.activeWorkers == nil {
-		e.activeWorkers = make(map[*subscription]map[*worker]struct{})
-	}
-
-	if _, ok := e.activeWorkers[w.subscription]; !ok {
-		e.activeWorkers[w.subscription] = make(map[*worker]struct{})
-	}
 
 	if add {
 		if e.shuttingDown() {
