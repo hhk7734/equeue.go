@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloudevents/sdk-go/v2/binding"
 	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/cloudevents/sdk-go/v2/protocol"
 )
 
 type HandlerFunc func(*Context)
@@ -262,9 +263,9 @@ func (w *worker) run() {
 	c.ctx, w.cancelCtx = context.WithCancel(context.Background())
 	c.Next()
 	if c.IsNack() {
-		w.message.Finish(errors.New("nack"))
+		w.message.Finish(protocol.ResultNACK)
 	} else {
-		w.message.Finish(nil)
+		w.message.Finish(protocol.ResultACK)
 	}
 	w.engine.pool.Put(c)
 }

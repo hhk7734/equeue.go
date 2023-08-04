@@ -14,7 +14,8 @@ type Driver interface {
 
 type Consumer interface {
 	// Receive blocks until a message is received or an error occurs. If Consumer is stopped,
-	// ErrConsumerStoped is returned.
+	// ErrConsumerStoped is returned. The caller is responsible for calling `Finish()` on the
+	// returned message.
 	Receive(ctx context.Context) (binding.Message, error)
 	Stop() error
 }

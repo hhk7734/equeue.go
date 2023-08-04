@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudevents/sdk-go/v2/binding"
 	"github.com/cloudevents/sdk-go/v2/binding/format"
+	"github.com/cloudevents/sdk-go/v2/protocol"
 	"github.com/hhk7734/equeue.go"
 	"github.com/nats-io/nats.go"
 )
@@ -129,10 +130,11 @@ func (n *natsMessage) ReadBinary(ctx context.Context, builder binding.BinaryWrit
 }
 
 func (n *natsMessage) Finish(err error) error {
-	if err != nil {
+	if protocol.IsACK(err) {
+		return n.msg.Ack()
+	} else {
 		return n.msg.Nak()
 	}
-	return n.msg.Ack()
 }
 
 func WriteMsg(ctx context.Context, m binding.Message, writer io.ReaderFrom, transformers ...binding.Transformer) error {
