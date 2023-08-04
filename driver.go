@@ -7,6 +7,8 @@ import (
 )
 
 type Driver interface {
+	// Send sends a message to the stream associated with the topic. msg.Finish() is called when
+	// sending is done.
 	Send(c context.Context, topic string, msg binding.Message) error
 	Consumer(topic string, subscriptionName string) (Consumer, error)
 	Close() error
