@@ -3,13 +3,11 @@ package nats
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 
 	"github.com/cloudevents/sdk-go/v2/binding"
 	"github.com/cloudevents/sdk-go/v2/binding/format"
-	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/hhk7734/equeue.go"
 	"github.com/nats-io/nats.go"
 )
@@ -40,11 +38,7 @@ func (n *natsDriver) Client() nats.JetStreamContext {
 
 func (n *natsDriver) Send(ctx context.Context, topic string, msg binding.Message) error {
 	var err error
-	defer func() {
-		if err2 := msg.Finish(err); err2 != nil {
-			err = err2
-		}
-	}()
+	defer msg.Finish(err)
 
 	writer := new(bytes.Buffer)
 	if err = WriteMsg(ctx, msg, writer); err != nil {
@@ -104,12 +98,7 @@ func (n *natsConsumer) Receive(ctx context.Context) (binding.Message, error) {
 		}
 		nMsg := nMsgs[0]
 
-		event := event.New()
-		if err := json.Unmarshal(nMsg.Data, &event); err != nil {
-			return nil, err
-		}
-
-		msg := &natsMessage{msg: nMsg, event: &event, consumer: n}
+		msg := &natsMessage{msg: nMsg}
 
 		return msg, nil
 	}
@@ -124,8 +113,6 @@ var _ binding.Message = new(natsMessage)
 
 type natsMessage struct {
 	msg      *nats.Msg
-	event    *event.Event
-	consumer *natsConsumer
 	encoding binding.Encoding
 }
 
