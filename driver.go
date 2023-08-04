@@ -3,11 +3,11 @@ package equeue
 import (
 	"context"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/binding"
 )
 
 type Driver interface {
-	Publish(c context.Context, topic string, event cloudevents.Event) error
+	Send(c context.Context, topic string, msg binding.Message) error
 	Consumer(topic string, subscriptionName string) (Consumer, error)
 	Close() error
 }
@@ -15,12 +15,6 @@ type Driver interface {
 type Consumer interface {
 	// Receive blocks until a message is received or an error occurs. If Consumer is stopped,
 	// ErrConsumerStoped is returned.
-	Receive() (Message, error)
+	Receive(ctx context.Context) (binding.Message, error)
 	Stop() error
-}
-
-type Message interface {
-	Event() *cloudevents.Event
-	Ack()
-	Nack()
 }

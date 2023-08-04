@@ -1,11 +1,15 @@
 package nats
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/binding"
+	"github.com/cloudevents/sdk-go/v2/binding/format"
+	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/hhk7734/equeue.go"
 	"github.com/nats-io/nats.go"
 )
@@ -34,13 +38,21 @@ func (n *natsDriver) Client() nats.JetStreamContext {
 	return n.js
 }
 
-func (n *natsDriver) Publish(ctx context.Context, topic string, event cloudevents.Event) error {
-	data, err := json.Marshal(event)
-	if err != nil {
+func (n *natsDriver) Send(ctx context.Context, topic string, msg binding.Message) error {
+	var err error
+	defer func() {
+		if err2 := msg.Finish(err); err2 != nil {
+			err = err2
+		}
+	}()
+
+	writer := new(bytes.Buffer)
+	if err = WriteMsg(ctx, msg, writer); err != nil {
 		return err
 	}
+
 	// TODO: custom subject from topic and Event
-	_, err = n.js.Publish(topic, data, nats.ExpectStream(topic))
+	_, err = n.js.Publish(topic, writer.Bytes(), nats.ExpectStream(topic))
 	return err
 }
 
@@ -71,7 +83,7 @@ type natsConsumer struct {
 	cancelCtx context.CancelFunc
 }
 
-func (n *natsConsumer) Receive() (equeue.Message, error) {
+func (n *natsConsumer) Receive(ctx context.Context) (binding.Message, error) {
 	for {
 		select {
 		case <-n.ctx.Done():
@@ -92,7 +104,7 @@ func (n *natsConsumer) Receive() (equeue.Message, error) {
 		}
 		nMsg := nMsgs[0]
 
-		event := cloudevents.NewEvent()
+		event := event.New()
 		if err := json.Unmarshal(nMsg.Data, &event); err != nil {
 			return nil, err
 		}
@@ -108,22 +120,57 @@ func (n *natsConsumer) Stop() error {
 	return nil
 }
 
-var _ equeue.Message = new(natsMessage)
+var _ binding.Message = new(natsMessage)
 
 type natsMessage struct {
 	msg      *nats.Msg
-	event    *cloudevents.Event
+	event    *event.Event
 	consumer *natsConsumer
+	encoding binding.Encoding
 }
 
-func (n *natsMessage) Event() *cloudevents.Event {
-	return n.event
+func (n *natsMessage) ReadEncoding() binding.Encoding {
+	return n.encoding
 }
 
-func (n *natsMessage) Ack() {
-	n.msg.Ack()
+func (n *natsMessage) ReadStructured(ctx context.Context, builder binding.StructuredWriter) error {
+	return builder.SetStructuredEvent(ctx, format.JSON, bytes.NewReader(n.msg.Data))
 }
 
-func (n *natsMessage) Nack() {
-	n.msg.Nak()
+func (n *natsMessage) ReadBinary(ctx context.Context, builder binding.BinaryWriter) error {
+	return binding.ErrNotBinary
+}
+
+func (n *natsMessage) Finish(err error) error {
+	if err != nil {
+		return n.msg.Nak()
+	}
+	return n.msg.Ack()
+}
+
+func WriteMsg(ctx context.Context, m binding.Message, writer io.ReaderFrom, transformers ...binding.Transformer) error {
+	structuredWriter := &natsMessageWriter{writer}
+
+	_, err := binding.Write(
+		ctx,
+		m,
+		structuredWriter,
+		nil,
+		transformers...,
+	)
+	return err
+}
+
+var _ binding.StructuredWriter = new(natsMessageWriter)
+
+type natsMessageWriter struct {
+	io.ReaderFrom
+}
+
+func (w *natsMessageWriter) SetStructuredEvent(_ context.Context, _ format.Format, event io.Reader) error {
+	if _, err := w.ReadFrom(event); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"math"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/event"
 )
 
 const abortIndex int8 = math.MaxInt8 >> 1
@@ -12,7 +12,7 @@ const abortIndex int8 = math.MaxInt8 >> 1
 type Context struct {
 	engine *Engine
 
-	Event *cloudevents.Event
+	Event *event.Event
 	ctx   context.Context
 
 	handlers HandlersChain
@@ -30,7 +30,7 @@ func (c *Context) reset() {
 	c.Errors = c.Errors[:0]
 }
 
-func (c *Context) Publish(ctx context.Context, topic string, event cloudevents.Event) error {
+func (c *Context) Publish(ctx context.Context, topic string, event event.Event) error {
 	return c.engine.Publish(ctx, topic, event)
 }
 

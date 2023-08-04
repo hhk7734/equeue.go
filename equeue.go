@@ -8,7 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/binding"
+	"github.com/cloudevents/sdk-go/v2/event"
 )
 
 type HandlerFunc func(*Context)
@@ -100,11 +101,12 @@ func (e *Engine) newContext() *Context {
 	return &Context{engine: e}
 }
 
-func (e *Engine) Publish(ctx context.Context, topic string, event cloudevents.Event) error {
+func (e *Engine) Publish(ctx context.Context, topic string, event event.Event) error {
 	if err := event.Validate(); err != nil {
 		return err
 	}
-	return e.driver.Publish(ctx, topic, event)
+
+	return e.driver.Send(ctx, topic, (*binding.EventMessage)(&event))
 }
 
 func (e *Engine) Run() error {
@@ -142,7 +144,7 @@ func (e *Engine) Run() error {
 						continue
 					}
 
-					msg, err := consumer.Receive()
+					msg, err := consumer.Receive(context.Background())
 					switch {
 					case errors.Is(err, ErrConsumerStopped):
 						return
@@ -194,7 +196,7 @@ func (e *Engine) stopConsumers() error {
 	return err
 }
 
-func (e *Engine) newWorker(s *subscription, m Message) *worker {
+func (e *Engine) newWorker(s *subscription, m binding.Message) *worker {
 	return &worker{engine: e, subscription: s, message: m}
 }
 
@@ -245,7 +247,7 @@ func (e *Engine) cancelWorkers() {
 type worker struct {
 	engine       *Engine
 	subscription *subscription
-	message      Message
+	message      binding.Message
 	cancelCtx    context.CancelFunc
 }
 
@@ -254,14 +256,15 @@ func (w *worker) run() {
 
 	c := w.engine.pool.Get().(*Context)
 	c.reset()
-	c.Event = w.message.Event()
+	// TODO: Error handling
+	c.Event, _ = binding.ToEvent(context.Background(), w.message)
 	c.handlers = w.subscription.handlers
 	c.ctx, w.cancelCtx = context.WithCancel(context.Background())
 	c.Next()
 	if c.IsNack() {
-		w.message.Nack()
+		w.message.Finish(errors.New("nack"))
 	} else {
-		w.message.Ack()
+		w.message.Finish(nil)
 	}
 	w.engine.pool.Put(c)
 }
