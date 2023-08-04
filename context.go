@@ -2,6 +2,7 @@ package equeue
 
 import (
 	"context"
+	"errors"
 	"math"
 
 	"github.com/cloudevents/sdk-go/v2/event"
@@ -19,7 +20,7 @@ type Context struct {
 	index    int8
 	nack     bool
 
-	Errors []error
+	Errors equeueErrors
 }
 
 func (c *Context) reset() {
@@ -68,12 +69,22 @@ func (c *Context) IsNack() bool {
 	return c.nack
 }
 
-func (c *Context) Error(err error) {
+func (c *Context) Error(err error) *Error {
 	if err == nil {
 		panic("err is nil")
 	}
 
-	c.Errors = append(c.Errors, err)
+	var perr *Error
+	ok := errors.As(err, &perr)
+	if !ok {
+		perr = &Error{
+			Err:  err,
+			Type: ErrorTypePrivate,
+		}
+	}
+
+	c.Errors = append(c.Errors, perr)
+	return perr
 }
 
 func (c *Context) Done() <-chan struct{} {

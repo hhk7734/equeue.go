@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -285,16 +286,25 @@ func (w *worker) run() {
 
 	c := w.engine.pool.Get().(*Context)
 	c.reset()
-	// TODO: Error handling
-	c.Event, _ = binding.ToEvent(context.Background(), w.message)
+
+	var err error
+	c.Event, err = binding.ToEvent(context.Background(), w.message)
+	if err != nil {
+		_, filename, line, _ := runtime.Caller(0)
+		c.Error(err).SetType(ErrorTypeBind).SetMeta(H{
+			"filename": filename,
+			"line":     line + 1})
+	}
 	c.handlers = w.subscription.handlers
 	c.ctx, w.cancelCtx = context.WithCancel(context.Background())
 	c.Next()
+
 	if c.IsNack() {
 		w.message.Finish(protocol.ResultNACK)
 	} else {
 		w.message.Finish(protocol.ResultACK)
 	}
+
 	w.engine.pool.Put(c)
 }
 
