@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloudevents/sdk-go/v2/binding"
+	"github.com/cloudevents/sdk-go/v2/binding/format"
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/cloudevents/sdk-go/v2/protocol"
 )
@@ -17,7 +18,21 @@ type HandlerFunc func(*Context)
 
 type HandlersChain []HandlerFunc
 
-func New(d Driver) *Engine {
+type OptionFunc func(*Engine)
+
+func WithForcedPublicationFormat(f format.Format) OptionFunc {
+	return func(e *Engine) {
+		e.forcedPublicationFormat = f
+	}
+}
+
+func WithForcedSubscriptionFormat(f format.Format) OptionFunc {
+	return func(e *Engine) {
+		e.forcedSubscriptionFormat = f
+	}
+}
+
+func New(d Driver, opts ...OptionFunc) *Engine {
 	engine := &Engine{
 		RouterGroup: RouterGroup{
 			root: true,
@@ -31,6 +46,11 @@ func New(d Driver) *Engine {
 	engine.pool.New = func() interface{} {
 		return engine.newContext()
 	}
+
+	for _, opt := range opts {
+		opt(engine)
+	}
+
 	return engine
 }
 
@@ -46,7 +66,9 @@ type subsTree map[string]map[string]*subscription
 type Engine struct {
 	RouterGroup
 
-	driver Driver
+	driver                   Driver
+	forcedPublicationFormat  format.Format
+	forcedSubscriptionFormat format.Format
 
 	inShutdown atomic.Bool
 
@@ -106,7 +128,9 @@ func (e *Engine) Publish(ctx context.Context, topic string, event event.Event) e
 	if err := event.Validate(); err != nil {
 		return err
 	}
-
+	if e.forcedPublicationFormat != nil {
+		ctx = binding.UseFormatForEvent(ctx, e.forcedPublicationFormat)
+	}
 	return e.driver.Send(ctx, topic, (*binding.EventMessage)(&event))
 }
 
@@ -145,7 +169,11 @@ func (e *Engine) Run() error {
 						continue
 					}
 
-					msg, err := consumer.Receive(context.Background())
+					ctx := context.Background()
+					if e.forcedSubscriptionFormat != nil {
+						ctx = withForcedReceivedMessageFormat(ctx, e.forcedSubscriptionFormat)
+					}
+					msg, err := consumer.Receive(ctx)
 					switch {
 					case errors.Is(err, ErrConsumerStopped):
 						return

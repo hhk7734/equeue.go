@@ -41,7 +41,7 @@ func (n *natsConsumer) Receive(ctx context.Context) (binding.Message, error) {
 		}
 		nMsg := nMsgs[0]
 
-		msg := &natsMessage{msg: nMsg}
+		msg := newNatsReceiveMessage(ctx, nMsg)
 
 		return msg, nil
 	}
@@ -52,26 +52,38 @@ func (n *natsConsumer) Stop() error {
 	return nil
 }
 
-var _ binding.Message = new(natsMessage)
+var _ binding.Message = new(natsReceiveMessage)
 
-type natsMessage struct {
+func newNatsReceiveMessage(ctx context.Context, msg *nats.Msg) *natsReceiveMessage {
+	f := equeue.ForcedReceivedMessageFormat(ctx)
+	if f == nil {
+		f = format.JSON
+	}
+	return &natsReceiveMessage{
+		msg:    msg,
+		format: f,
+	}
+}
+
+type natsReceiveMessage struct {
 	msg      *nats.Msg
+	format   format.Format
 	encoding binding.Encoding
 }
 
-func (n *natsMessage) ReadEncoding() binding.Encoding {
+func (n *natsReceiveMessage) ReadEncoding() binding.Encoding {
 	return n.encoding
 }
 
-func (n *natsMessage) ReadStructured(ctx context.Context, builder binding.StructuredWriter) error {
-	return builder.SetStructuredEvent(ctx, format.JSON, bytes.NewReader(n.msg.Data))
+func (n *natsReceiveMessage) ReadStructured(ctx context.Context, builder binding.StructuredWriter) error {
+	return builder.SetStructuredEvent(ctx, n.format, bytes.NewReader(n.msg.Data))
 }
 
-func (n *natsMessage) ReadBinary(ctx context.Context, builder binding.BinaryWriter) error {
+func (n *natsReceiveMessage) ReadBinary(ctx context.Context, builder binding.BinaryWriter) error {
 	return binding.ErrNotBinary
 }
 
-func (n *natsMessage) Finish(err error) error {
+func (n *natsReceiveMessage) Finish(err error) error {
 	if protocol.IsACK(err) {
 		return n.msg.Ack()
 	} else {

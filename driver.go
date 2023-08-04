@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cloudevents/sdk-go/v2/binding"
+	"github.com/cloudevents/sdk-go/v2/binding/format"
 )
 
 type Driver interface {
@@ -12,6 +13,22 @@ type Driver interface {
 	Send(c context.Context, topic string, msg binding.Message) error
 	Consumer(topic string, subscriptionName string) (Consumer, error)
 	Close() error
+}
+
+type receivedMessageFormatKey struct{}
+
+func withForcedReceivedMessageFormat(ctx context.Context, f format.Format) context.Context {
+	return context.WithValue(ctx, receivedMessageFormatKey{}, f)
+}
+
+// ForcedReceivedMessageFormat returns format to convert the received message to event.Event. Do not
+// use this function except in Driver implementations.
+func ForcedReceivedMessageFormat(ctx context.Context) format.Format {
+	f := ctx.Value(receivedMessageFormatKey{})
+	if f == nil {
+		return nil
+	}
+	return f.(format.Format)
 }
 
 type Consumer interface {
