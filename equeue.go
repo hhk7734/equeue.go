@@ -21,6 +21,12 @@ type HandlersChain []HandlerFunc
 
 type OptionFunc func(*Engine)
 
+func WithForcedPublicationSource(s string) OptionFunc {
+	return func(e *Engine) {
+		e.forcedPublicationSource = s
+	}
+}
+
 func WithForcedPublicationFormat(f format.Format) OptionFunc {
 	return func(e *Engine) {
 		e.forcedPublicationFormat = f
@@ -33,12 +39,12 @@ func WithForcedSubscriptionFormat(f format.Format) OptionFunc {
 	}
 }
 
-func New(d Driver, opts ...OptionFunc) *Engine {
+func New(driver Driver, opts ...OptionFunc) *Engine {
 	engine := &Engine{
 		RouterGroup: RouterGroup{
 			root: true,
 		},
-		driver:                       d,
+		driver:                       driver,
 		tree:                         make(subsTree),
 		consumers:                    make(map[*Consumer]struct{}),
 		subscriptionActiveWorkersMap: make(map[*subscription]map[*worker]struct{}),
@@ -68,6 +74,7 @@ type Engine struct {
 	RouterGroup
 
 	driver                   Driver
+	forcedPublicationSource  string
 	forcedPublicationFormat  format.Format
 	forcedSubscriptionFormat format.Format
 
@@ -126,6 +133,9 @@ func (e *Engine) newContext() *Context {
 }
 
 func (e *Engine) Publish(ctx context.Context, topic string, event event.Event) error {
+	if e.forcedPublicationSource != "" {
+		event.SetSource(e.forcedPublicationSource)
+	}
 	if err := event.Validate(); err != nil {
 		return err
 	}
