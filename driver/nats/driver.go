@@ -11,7 +11,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-func Open(url string, opts ...nats.Option) *natsDriver {
+func Open(url string, opts ...nats.Option) *Driver {
 	n, err := nats.Connect(url, opts...)
 	if err != nil {
 		panic(err)
@@ -22,20 +22,20 @@ func Open(url string, opts ...nats.Option) *natsDriver {
 		panic(err)
 	}
 
-	return &natsDriver{js: js}
+	return &Driver{JetStream: js}
 }
 
-var _ equeue.Driver = new(natsDriver)
+var _ equeue.Driver = new(Driver)
 
-type natsDriver struct {
-	js nats.JetStreamContext
+type Driver struct {
+	JetStream nats.JetStreamContext
 }
 
-func (n *natsDriver) Client() nats.JetStreamContext {
-	return n.js
+func (n *Driver) Client() nats.JetStreamContext {
+	return n.JetStream
 }
 
-func (n *natsDriver) Send(ctx context.Context, topic string, msg binding.Message) error {
+func (n *Driver) Send(ctx context.Context, topic string, msg binding.Message) error {
 	var err error
 	defer msg.Finish(err)
 
@@ -45,16 +45,16 @@ func (n *natsDriver) Send(ctx context.Context, topic string, msg binding.Message
 	}
 
 	// TODO: custom subject from topic and Event
-	_, err = n.js.Publish(topic, writer.Bytes(), nats.ExpectStream(topic))
+	_, err = n.JetStream.Publish(topic, writer.Bytes(), nats.ExpectStream(topic))
 	return err
 }
 
-func (n *natsDriver) Consumer(topic string, subscriptionName string) (equeue.Consumer, error) {
-	if _, err := n.js.ConsumerInfo(topic, subscriptionName); err != nil {
+func (n *Driver) Consumer(topic string, subscriptionName string) (equeue.Consumer, error) {
+	if _, err := n.JetStream.ConsumerInfo(topic, subscriptionName); err != nil {
 		return nil, err
 	}
 
-	sub, err := n.js.PullSubscribe("", subscriptionName, nats.BindStream(topic))
+	sub, err := n.JetStream.PullSubscribe("", subscriptionName, nats.BindStream(topic))
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (n *natsDriver) Consumer(topic string, subscriptionName string) (equeue.Con
 	return &natsConsumer{sub: sub, ctx: ctx, cancelCtx: cancelCtx}, nil
 }
 
-func (n *natsDriver) Close() error {
+func (n *Driver) Close() error {
 	return nil
 }
 
