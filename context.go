@@ -13,8 +13,7 @@ const abortIndex int8 = math.MaxInt8 >> 1
 type Context struct {
 	engine *Engine
 
-	Event *event.Event
-	ctx   context.Context
+	Request *Request
 
 	handlers HandlersChain
 	index    int8
@@ -88,5 +87,5 @@ func (c *Context) Error(err error) *Error {
 }
 
 func (c *Context) Done() <-chan struct{} {
-	return c.ctx.Done()
+	return c.Request.Context().Done()
 }

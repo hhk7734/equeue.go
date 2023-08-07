@@ -297,16 +297,20 @@ func (w *worker) run() {
 	c := w.engine.pool.Get().(*Context)
 	c.reset()
 
+	var ctx context.Context
+	ctx, w.cancelCtx = context.WithCancel(context.Background())
+
 	var err error
-	c.Event, err = binding.ToEvent(context.Background(), w.message)
+	e, err := binding.ToEvent(context.Background(), w.message)
 	if err != nil {
 		_, filename, line, _ := runtime.Caller(0)
 		c.Error(err).SetType(ErrorTypeBind).SetMeta(H{
 			"filename": filename,
 			"line":     line + 1})
 	}
+	c.Request = &Request{Event: e, ctx: ctx}
+
 	c.handlers = w.subscription.handlers
-	c.ctx, w.cancelCtx = context.WithCancel(context.Background())
 	c.Next()
 
 	if c.IsNack() {
