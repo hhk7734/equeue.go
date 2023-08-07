@@ -53,6 +53,15 @@ func (n *natsConsumer) Stop() error {
 }
 
 var _ binding.Message = new(natsReceiveMessage)
+var _ binding.MessageContext = new(natsReceiveMessage)
+
+type natsReceiveMessage struct {
+	msg      *nats.Msg
+	format   format.Format
+	encoding binding.Encoding
+
+	ctx context.Context
+}
 
 func newNatsReceiveMessage(ctx context.Context, msg *nats.Msg) *natsReceiveMessage {
 	f := equeue.ForcedReceivedMessageFormat(ctx)
@@ -62,13 +71,12 @@ func newNatsReceiveMessage(ctx context.Context, msg *nats.Msg) *natsReceiveMessa
 	return &natsReceiveMessage{
 		msg:    msg,
 		format: f,
+		ctx:    ctx,
 	}
 }
 
-type natsReceiveMessage struct {
-	msg      *nats.Msg
-	format   format.Format
-	encoding binding.Encoding
+func (n *natsReceiveMessage) Context() context.Context {
+	return n.ctx
 }
 
 func (n *natsReceiveMessage) ReadEncoding() binding.Encoding {

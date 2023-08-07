@@ -298,10 +298,15 @@ func (w *worker) run() {
 	c.reset()
 
 	var ctx context.Context
-	ctx, w.cancelCtx = context.WithCancel(context.Background())
+	if mctx, ok := w.message.(binding.MessageContext); ok {
+		ctx = mctx.Context()
+	} else {
+		ctx = context.Background()
+	}
+	ctx, w.cancelCtx = context.WithCancel(ctx)
 
 	var err error
-	e, err := binding.ToEvent(context.Background(), w.message)
+	e, err := binding.ToEvent(ctx, w.message)
 	if err != nil {
 		_, filename, line, _ := runtime.Caller(0)
 		c.Error(err).SetType(ErrorTypeBind).SetMeta(H{
@@ -309,7 +314,6 @@ func (w *worker) run() {
 			"line":     line + 1})
 	}
 	c.Request = &Request{Event: e, ctx: ctx}
-
 	c.handlers = w.subscription.handlers
 	c.Next()
 
