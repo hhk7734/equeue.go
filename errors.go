@@ -38,5 +38,5 @@ func (msg *Error) SetMeta(data any) *Error {
 type equeueErrors []*Error
 
 func (msg Error) Error() string {
-	return fmt.Sprintf("err `%v`, meta `%v`", msg.Err, msg.Meta)
+	return fmt.Sprintf("err: `%v`, meta: `%v`", msg.Err, msg.Meta)
 }
