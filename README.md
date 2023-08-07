@@ -31,7 +31,7 @@ func (z *ZapxLoggerMiddleware) Logger(c *equeue.Context) {
 	logger := zapx.Ctx(ctx)
 
 	if len(c.Errors) > 0 {
-		for i, e := range c.Errors {
+		for _, e := range c.Errors {
 			logger.Error("internal error", zap.Error(e))
 		}
 	} else {
