@@ -312,6 +312,9 @@ func (w *worker) run() {
 		c.Error(err).SetType(ErrorTypeBind).SetMeta(H{
 			"filename": filename,
 			"line":     line + 1})
+
+		ev := event.New()
+		e = &ev
 	}
 	c.Request = &Request{Event: e, ctx: ctx}
 	c.handlers = w.subscription.handlers
