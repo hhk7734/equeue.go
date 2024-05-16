@@ -321,8 +321,8 @@ func (w *worker) run() {
 	c.Next()
 
 	if c.IsNack() {
-		if c.nackDelay > 0 {
-			w.message.Finish(&ResultNackWithDelay{Delay: c.nackDelay})
+		if c.nackRedeliveryDelay > 0 {
+			w.message.Finish(&ResultNackWithRedeliveryDelay{delay: c.nackRedeliveryDelay})
 		} else {
 			w.message.Finish(protocol.ResultNACK)
 		}
