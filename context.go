@@ -4,20 +4,34 @@ import (
 	"context"
 	"errors"
 	"math"
+	"time"
 
 	"github.com/cloudevents/sdk-go/v2/event"
 )
 
 const abortIndex int8 = math.MaxInt8 >> 1
 
+type ResultNackWithRedeliveryDelay struct {
+	delay time.Duration
+}
+
+func (r ResultNackWithRedeliveryDelay) Error() string {
+	return "nack with delay"
+}
+
+func (r ResultNackWithRedeliveryDelay) Delay() time.Duration {
+	return r.delay
+}
+
 type Context struct {
 	engine *Engine
 
 	Request *Request
 
-	handlers HandlersChain
-	index    int8
-	nack     bool
+	handlers            HandlersChain
+	index               int8
+	nack                bool
+	nackRedeliveryDelay time.Duration
 
 	Errors equeueErrors
 }
@@ -26,6 +40,7 @@ func (c *Context) reset() {
 	c.handlers = nil
 	c.index = -1
 	c.nack = false
+	c.nackRedeliveryDelay = 0
 
 	c.Errors = c.Errors[:0]
 }
@@ -62,6 +77,11 @@ func (c *Context) AbortWithError(err error) {
 
 func (c *Context) Nack() {
 	c.nack = true
+}
+
+func (c *Context) NackWithRedeliveryDelay(delay time.Duration) {
+	c.nack = true
+	c.nackRedeliveryDelay = delay
 }
 
 func (c *Context) IsNack() bool {
