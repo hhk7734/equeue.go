@@ -19,6 +19,10 @@ func (r ResultNackWithRedeliveryDelay) Error() string {
 	return "nack with delay"
 }
 
+func (r ResultNackWithRedeliveryDelay) Delay() time.Duration {
+	return r.delay
+}
+
 type Context struct {
 	engine *Engine
 
@@ -75,7 +79,7 @@ func (c *Context) Nack() {
 	c.nack = true
 }
 
-func (c *Context) NackWithDelay(delay time.Duration) {
+func (c *Context) NackWithRedeliveryDelay(delay time.Duration) {
 	c.nack = true
 	c.nackRedeliveryDelay = delay
 }

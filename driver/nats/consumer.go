@@ -95,9 +95,9 @@ func (n *natsReceiveMessage) Finish(err error) error {
 	if protocol.IsACK(err) {
 		return n.msg.Ack()
 	} else {
-		var nack *equeue.ResultNackWithDelay
+		var nack *equeue.ResultNackWithRedeliveryDelay
 		if errors.As(err, &nack) {
-			return n.msg.NakWithDelay(nack.Delay)
+			return n.msg.NakWithDelay(nack.Delay())
 		}
 		return n.msg.Nak()
 	}
