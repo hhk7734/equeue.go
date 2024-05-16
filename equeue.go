@@ -195,6 +195,7 @@ func (e *Engine) Run() error {
 					}
 					w := e.newWorker(s, msg)
 					if ok := e.trackWorker(w, true); !ok {
+						w.message.Finish(protocol.ResultNACK)
 						return
 					}
 					go w.run()
