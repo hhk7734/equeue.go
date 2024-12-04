@@ -44,8 +44,7 @@ func (n *Driver) Send(ctx context.Context, topic string, msg binding.Message) er
 		return err
 	}
 
-	// TODO: custom subject from topic and Event
-	_, err = n.JetStream.Publish(topic, writer.Bytes(), nats.ExpectStream(topic))
+	_, err = n.JetStream.Publish(topic, writer.Bytes())
 	return err
 }
 
