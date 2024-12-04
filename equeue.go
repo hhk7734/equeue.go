@@ -195,6 +195,7 @@ func (e *Engine) Run() error {
 					}
 					w := e.newWorker(s, msg)
 					if ok := e.trackWorker(w, true); !ok {
+						w.message.Finish(protocol.ResultNACK)
 						return
 					}
 					go w.run()
@@ -321,7 +322,11 @@ func (w *worker) run() {
 	c.Next()
 
 	if c.IsNack() {
-		w.message.Finish(protocol.ResultNACK)
+		if c.nackRedeliveryDelay > 0 {
+			w.message.Finish(&ResultNackWithRedeliveryDelay{delay: c.nackRedeliveryDelay})
+		} else {
+			w.message.Finish(protocol.ResultNACK)
+		}
 	} else {
 		w.message.Finish(protocol.ResultACK)
 	}
